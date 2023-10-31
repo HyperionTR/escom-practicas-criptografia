@@ -1,3 +1,4 @@
+from typing import Literal
 from crypto_modes import cifrado_des
 from crypto_modes import decifrado_des
 from Crypto.Cipher import DES
@@ -8,19 +9,46 @@ from tkinter import messagebox, filedialog, IntVar
 from PIL import Image, ImageTk
 
 # Variable global para almacenar el nombre del archivo cargado
-nombre_archivo = ""
+nombre_archivo: str = ""
 imagen_original = None
+imagen_thumbnail = None
 
 def cargar_archivo():
-    global nombre_archivo, imagen_original
+    global nombre_archivo, imagen_original, imagen_thumbnail
     nombre_archivo = filedialog.askopenfilename(filetypes=[("Mapas de bits (BMP)", "*.bmp")])
     if nombre_archivo:
         imagen_original = Image.open(nombre_archivo)
-        imagen_original.thumbnail((200, 200))  # Redimensionar la imagen para visualización
-        imagen_tk = ImageTk.PhotoImage(imagen_original)
+        imagen_thumbnail = imagen_original.copy()
+        imagen_thumbnail.thumbnail((200, 200))  # Redimensionar la imagen para visualización
+        imagen_tk = ImageTk.PhotoImage(imagen_thumbnail)
         imagen_label.config(image=imagen_tk)
         imagen_label.image = imagen_tk  # Mantener una referencia para que no se elimine
-	
+
+def guardar_archivo( byte_data: bytes, *, proceso_cifrado: Literal["cipher", "decipher"] = "cipher" ):
+	"""Guarda los datos de pixel de la imágen BMP en un archivo modificando el nombre de archivo según el proceso criptográfico que se le halla aplicado a la imágen
+
+	Args:
+		byte_data (bytes): Los datos de pixel de la imágen BMP
+	"""
+	# ALmacenamos las siglas del modo de operación en formato de texto
+	selected_mode = get_selected_mode()
+	modo_texto = "ECB" if selected_mode == DES.MODE_ECB else \
+				 "CBC" if selected_mode == DES.MODE_CBC else \
+				 "CFB" if selected_mode == DES.MODE_CFB else \
+				 "OFB" if selected_mode == DES.MODE_OFB else ""	
+ 
+ 	# Guardar los datos cifrados en un archivo con el nombre modificado
+	if proceso_cifrado == "cipher":
+		archivo_salida = nombre_archivo.replace(".bmp", f"_e{modo_texto}.bmp")
+	elif proceso_cifrado == "decipher":
+		archivo_salida = nombre_archivo.replace(".bmp", f"_d{modo_texto}.bmp")
+	else:
+		archivo_salida = nombre_archivo.replace(".bmp", f"_{modo_texto}.bmp")
+
+	imagen_salida = Image.frombytes(imagen_original.mode, imagen_original.size, byte_data)
+	imagen_salida.save(archivo_salida)
+
+	messagebox.showinfo("Información", f"Imagen cifrada guardada en:\n {archivo_salida}")
 
 def get_selected_mode():
     modo_sel = modo_cifrado.get()
@@ -42,9 +70,17 @@ def update_image_label( byte_data: bytes ):
 	imagen_label.config(image=imagen_tk)
 	imagen_label.image = imagen_tk  # Mantener una referencia para que no se elimine
 
-# Definición de las funciones lambda para utilizarse en los botones
-cifrado = lambda: update_image_label( cifrado_des(clave_entry.get(), iv_entry.get(), nombre_archivo, get_selected_mode()) )
-decifrado = lambda: update_image_label( decifrado_des(clave_entry.get(), iv_entry.get(), nombre_archivo, get_selected_mode()) )
+def cb_cifrado():
+    plain_data = imagen_original.tobytes()
+    encrypted_data = cifrado_des(clave_entry.get(), iv_entry.get(), plain_data, get_selected_mode())
+    update_image_label( encrypted_data )
+    guardar_archivo( encrypted_data, proceso_cifrado="cipher" )
+    
+def cb_descifrado():
+    encrypted_data = imagen_original.tobytes()
+    decrypted_data = decifrado_des(clave_entry.get(), iv_entry.get(), encrypted_data, get_selected_mode())
+    update_image_label( decrypted_data )
+    guardar_archivo( decrypted_data, proceso_cifrado="decipher" )
 
 # Crear la ventana principal
 ventana = tk.Tk(screenName="Cifrado y Descifrado de Imágenes BMP")
@@ -93,7 +129,7 @@ imagen_label = tk.Label(ventana)
 imagen_label.pack()
 
 # Botones para cifrar y descifrar
-cifrar_button = tk.Button(ventana, text="Cifrar", command=cifrado )
-descifrar_button = tk.Button(ventana, text="Descifrar", command=decifrado )
+cifrar_button = tk.Button(ventana, text="Cifrar", command=cb_cifrado )
+descifrar_button = tk.Button(ventana, text="Descifrar", command=cb_descifrado )
 cifrar_button.pack()
 descifrar_button.pack()
